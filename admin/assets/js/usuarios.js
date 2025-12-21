@@ -42,18 +42,18 @@ async function cargarUsuarios() {
                 ? '<span class="bg-purple-100 text-purple-700 px-2 py-1 rounded-full text-xs font-bold border border-purple-200">SUPERADMIN</span>'
                 : '<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-bold border border-blue-200">ADMIN</span>';
 
-            // --- FILA RESPONSIVE (CARD vs ROW) ---
+            // --- CORRECCIÓN AQUÍ: Se cambiaron las propiedades u.nombre_completo por u.nombre y u.username por u.cedula ---
             const row = `
                 <tr class="hover:bg-gray-50 transition block md:table-row bg-white md:bg-transparent shadow-sm md:shadow-none rounded-xl md:rounded-none border border-gray-200 md:border-0 md:border-b md:border-gray-100 p-4 md:p-0">
                     
                     <td class="p-2 md:p-4 block md:table-cell flex justify-between items-center md:border-none border-b border-gray-50 last:border-0">
                         <span class="font-bold text-xs text-gray-400 uppercase md:hidden">Nombre:</span>
-                        <span class="font-semibold text-gray-800 text-right md:text-left">${u.nombre_completo}</span>
+                        <span class="font-semibold text-gray-800 text-right md:text-left">${u.nombre}</span>
                     </td>
 
                     <td class="p-2 md:p-4 block md:table-cell flex justify-between items-center md:border-none border-b border-gray-50 last:border-0">
-                        <span class="font-bold text-xs text-gray-400 uppercase md:hidden">Usuario:</span>
-                        <span class="font-mono text-sm text-gray-600">${u.username}</span>
+                        <span class="font-bold text-xs text-gray-400 uppercase md:hidden">Cédula:</span>
+                        <span class="font-mono text-sm text-gray-600">${u.cedula}</span>
                     </td>
 
                     <td class="p-2 md:p-4 block md:table-cell flex justify-between items-center md:border-none border-b border-gray-50 last:border-0">
@@ -62,7 +62,7 @@ async function cargarUsuarios() {
                     </td>
 
                     <td class="p-2 md:p-4 block md:table-cell flex justify-end md:justify-center items-center gap-2 mt-2 md:mt-0">
-                        <button onclick="abrirModalPassword(${u.id}, '${u.nombre_completo}')" class="text-yellow-600 hover:text-yellow-800 bg-yellow-50 hover:bg-yellow-100 p-2 rounded-lg transition" title="Cambiar Contraseña">
+                        <button onclick="abrirModalPassword(${u.id}, '${u.nombre}')" class="text-yellow-600 hover:text-yellow-800 bg-yellow-50 hover:bg-yellow-100 p-2 rounded-lg transition" title="Cambiar Contraseña">
                             <i class="ph ph-lock-key text-lg"></i>
                         </button>
                         

@@ -163,4 +163,29 @@ class AsistenciaDAO {
         $stmt->execute([':id' => $ultimoIdConocido]);
         return $stmt->fetchAll();
     }
+
+    /**
+     * NUEVO MÉTODO PARA EXCEL CONSOLIDADO
+     * Trae los registros ordenados por Nombre y Fecha ASC para poder emparejar Entrada-Salida
+     */
+    public function obtenerReporteParaExcel($inicio, $fin, $sede = '') {
+        $sql = "SELECT a.*, c.nombre_completo, c.cedula, c.origen as colaborador_origen
+                FROM asistencias a
+                INNER JOIN colaboradores c ON a.colaborador_id = c.id
+                WHERE DATE(a.fecha_hora) BETWEEN :inicio AND :fin";
+        
+        $params = [':inicio' => $inicio, ':fin' => $fin];
+
+        if (!empty($sede) && $sede !== 'TODAS') {
+            $sql .= " AND a.sede_registro = :sede";
+            $params[':sede'] = $sede;
+        }
+
+        // CLAVE: Ordenar por usuario y luego cronológicamente ascendente
+        $sql .= " ORDER BY c.nombre_completo ASC, a.fecha_hora ASC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
 }

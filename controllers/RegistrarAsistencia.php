@@ -1,32 +1,28 @@
 <?php
 // controllers/RegistrarAsistencia.php
 
-// 1. Configuración de cabeceras
+// 1. Configuración y Conexión
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *'); 
-header('Access-Control-Allow-Methods: POST');
-
-// 2. Importar los modelos
+require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../models/ColaboradorDAO.php';
 require_once __DIR__ . '/../models/AsistenciaDAO.php';
 
-// 3. Obtener los datos enviados
-$input = json_decode(file_get_contents('php://input'), true);
-
-if (!isset($input['cedula']) || !isset($input['sede'])) {
-    echo json_encode(['status' => 'error', 'message' => 'Datos incompletos (Falta cédula o sede)']);
-    exit;
-}
-
-$cedula = $input['cedula'];
-$sede = $input['sede']; 
-$tipoManual = isset($input['tipo_manual']) ? $input['tipo_manual'] : null;
-
-$colaboradorDAO = new ColaboradorDAO();
-$asistenciaDAO = new AsistenciaDAO();
+// Asegurar Zona Horaria (Vital para cálculos de tiempo)
+date_default_timezone_set('America/Guayaquil');
 
 try {
-    // 4. Buscar al colaborador
+    // 2. Obtener datos del Request
+    $input = json_decode(file_get_contents('php://input'), true);
+    $cedula = $input['cedula'] ?? '';
+    $sede = $input['sede'] ?? 'Sede Principal';
+    $tipoManual = $input['tipo_manual'] ?? null; // Puede ser 'ENTRADA', 'SALIDA' o null
+
+    if (empty($cedula)) {
+        throw new Exception("Cédula no detectada");
+    }
+
+    // 3. Buscar Colaborador
+    $colaboradorDAO = new ColaboradorDAO();
     $colaborador = $colaboradorDAO->obtenerPorCedula($cedula);
 
     if (!$colaborador) {
@@ -34,83 +30,88 @@ try {
         exit;
     }
 
-    // =================================================================================
-    // 🛡️ LÓGICA ANTI-REBOTE (Anti-Double Scan)
-    // Evita registros duplicados si el usuario deja el carnet frente a la cámara
-    // =================================================================================
-    
-    // Obtener la ultimísima vez que marcó (requiere que hayas agregado la función al DAO)
-    $ultima = $asistenciaDAO->obtenerUltimaAsistencia($colaborador['id']);
+    if ($colaborador['activo'] != 1) {
+        echo json_encode(['status' => 'error', 'message' => 'Colaborador inactivo']);
+        exit;
+    }
 
-    if ($ultima) {
-        $tiempoUltimo = strtotime($ultima['fecha_hora']);
-        $tiempoActual = time();
-        $diferencia = $tiempoActual - $tiempoUltimo;
+    // 4. Lógica de Tiempos y Estado
+    $ahora = new DateTime();
+    $ultimaAccion = $colaborador['ultima_accion'] ? new DateTime($colaborador['ultima_accion']) : null;
+    $estadoActual = $colaborador['estado_actual']; // 'DENTRO' o 'FUERA'
 
-        // Si pasaron menos de 120 segundos (2 minutos)
-        if ($diferencia < 120) {
-            // Si es un intento manual forzado, permitimos el paso (opcional)
-            // Si es escaneo automático, lo bloqueamos
-            if (!$tipoManual) {
-                echo json_encode([
-                    'status' => 'warning', 
-                    'message' => 'Ya registraste asistencia hace un momento. Espera unos minutos.'
-                ]);
-                exit; // DETENER EJECUCIÓN
+    // Calcular tiempo transcurrido (si existe registro previo)
+    $minutosPasados = 999999;
+    $horasPasadas = 999999;
+
+    if ($ultimaAccion) {
+        $intervalo = $ultimaAccion->diff($ahora); //
+        $horasPasadas = $intervalo->h + ($intervalo->days * 24); // Total horas
+        $minutosPasados = $intervalo->i + ($horasPasadas * 60);  // Total minutos
+    }
+
+    // 5. Anti-Rebote (Evitar doble marca accidental en menos de 2 min)
+    if ($tipoManual === null && $minutosPasados < 2) {
+        echo json_encode([
+            'status' => 'warning',
+            'message' => 'Ya registraste tu ' . ($estadoActual == 'DENTRO' ? 'entrada' : 'salida') . ' hace un momento.'
+        ]);
+        exit;
+    }
+
+    // 6. Determinación del Tipo de Registro (El Cerebro de la Lógica)
+    $nuevoTipo = '';
+
+    if ($tipoManual) {
+        // A) MODO MANUAL: La orden del usuario es ley
+        $nuevoTipo = $tipoManual;
+    } else {
+        // B) MODO AUTOMÁTICO (Inteligente)
+        if ($estadoActual == 'FUERA') {
+            // Si está fuera, entra.
+            $nuevoTipo = 'ENTRADA';
+        } else {
+            // Si está dentro...
+            // REGLA DE SEGURIDAD (16 HORAS):
+            // Si pasaron más de 16 horas, asumimos que olvidó marcar salida ayer.
+            // Por lo tanto, esto cuenta como una NUEVA ENTRADA (reset).
+            if ($horasPasadas > 16) {
+                $nuevoTipo = 'ENTRADA';
+            } else {
+                // Si es un turno normal (menos de 16h), cierra el ciclo.
+                $nuevoTipo = 'SALIDA';
             }
         }
     }
-    // =================================================================================
 
-    // 5. Determinar Tipo de Asistencia (Entrada/Salida)
-    
-    // a) Si es Manual (Botones forzados)
-    if ($tipoManual) {
-        $tipoAsistencia = $tipoManual; // 'ENTRADA' o 'SALIDA'
-        $nuevoEstado = ($tipoManual === 'ENTRADA') ? 'DENTRO' : 'FUERA';
-        $modoRegistro = 'QR_MANUAL'; // O ADMIN_MANUAL según prefieras
-    } 
-    // b) Si es Automático (Inteligente)
-    else {
-        // Verificar si es el primer registro del día
-        $hoy = date('Y-m-d');
-        $fechaUltima = $ultima ? date('Y-m-d', strtotime($ultima['fecha_hora'])) : '';
-        $esNuevoDia = ($fechaUltima !== $hoy);
+    // 7. Definir Nuevo Estado para BD
+    $nuevoEstado = ($nuevoTipo == 'ENTRADA') ? 'DENTRO' : 'FUERA';
 
-        if ($esNuevoDia || $colaborador['estado_actual'] === 'FUERA') {
-            $tipoAsistencia = 'ENTRADA';
-            $nuevoEstado = 'DENTRO';
-        } else {
-            $tipoAsistencia = 'SALIDA';
-            $nuevoEstado = 'FUERA';
-        }
-        $modoRegistro = 'QR_AUTO';
-    }
+    // 8. Guardar en Base de Datos
+    $asistenciaDAO = new AsistenciaDAO();
+    $registroExitoso = $asistenciaDAO->registrar($colaborador['id'], $nuevoTipo, $sede, ($tipoManual ? 'QR_MANUAL' : 'QR_AUTO'));
 
-    // 6. Registrar en Base de Datos
-    $guardado = $asistenciaDAO->registrar(
-        $colaborador['id'], 
-        $tipoAsistencia, 
-        $sede, 
-        $modoRegistro,
-        null // Observación opcional
-    );
-
-    // 7. Actualizar estado y responder
-    if ($guardado) {
+    if ($registroExitoso) {
+        // Actualizar estado del colaborador
         $colaboradorDAO->actualizarEstado($colaborador['id'], $nuevoEstado);
 
+        // Respuesta Exitosa
         echo json_encode([
             'status' => 'success',
-            'tipo' => $tipoAsistencia,
+            'tipo' => $nuevoTipo,
             'colaborador' => $colaborador['nombre_completo'],
-            'hora' => date('H:i:s'),
+            'hora' => date('H:i:s'), // Hora del servidor (Zona Horaria Ecuador)
             'mensaje' => 'Registro Exitoso'
         ]);
+
+        // (Opcional) Notificar por SSE si lo usas
+        // enviarNotificacionSSE(...); 
+
     } else {
-        echo json_encode(['status' => 'error', 'message' => 'Error al guardar en BD']);
+        throw new Exception("Error al guardar en base de datos");
     }
 
 } catch (Exception $e) {
-    echo json_encode(['status' => 'error', 'message' => 'Error del servidor: ' . $e->getMessage()]);
+    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
 }
+?>

@@ -1,20 +1,25 @@
 // public/assets/js/kiosco.js
 
 // --- VARIABLES GLOBALES ---
-let html5QrcodeScanner = null;
+let html5QrCode = null; // Instancia del escáner
 let isScanning = true;
 let currentSede = localStorage.getItem('asistencia_sede');
 let manualMode = null; 
-let manualTimeout = null;
 let SEDES = []; // Se llenará desde la BD
 
 // --- INICIALIZACIÓN ---
 document.addEventListener('DOMContentLoaded', async () => {
     
     // 1. Asignar eventos a botones estáticos
-    document.getElementById('btnEntrada').addEventListener('click', () => activarModoManual('ENTRADA'));
-    document.getElementById('btnSalida').addEventListener('click', () => activarModoManual('SALIDA'));
+    document.getElementById('btnEntrada').addEventListener('click', () => toggleModoManual('ENTRADA'));
+    document.getElementById('btnSalida').addEventListener('click', () => toggleModoManual('SALIDA'));
     document.getElementById('btnResetConfig').addEventListener('click', borrarConfig);
+    
+    // Botón de recarga
+    const btnReload = document.getElementById('btnReloadCam');
+    if (btnReload) {
+        btnReload.addEventListener('click', recargarCamara);
+    }
 
     // 2. Cargar configuración de Sedes desde el Backend
     await cargarSedesBackend();
@@ -26,7 +31,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Validar si la sede guardada aún existe en la nueva lista
         const existe = SEDES.find(s => s.id === currentSede);
         if (!existe && SEDES.length > 0) {
-            // Si la sede fue borrada del admin, obligar a re-configurar
             alert("La ubicación configurada ya no existe. Por favor selecciona una nueva.");
             localStorage.removeItem('asistencia_sede');
             currentSede = null;
@@ -40,13 +44,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 // --- GESTIÓN DE SEDES ---
 async function cargarSedesBackend() {
     try {
-        // Petición al controlador que creamos anteriormente
         const res = await fetch('../controllers/SedeController.php'); 
         const data = await res.json();
         
-        // Mapeamos los datos de la BD al formato interno
         SEDES = data.map(s => ({
-            id: s.nombre, // Usamos el nombre como ID (ej: "Edificio Tulcán")
+            id: s.nombre,
             label: `🏢 ${s.nombre}`,
             color: s.color || 'bg-blue-600'
         }));
@@ -71,7 +73,6 @@ function generarBotonesSedes() {
 
     SEDES.forEach(sede => {
         const btn = document.createElement('button');
-        // Clases de Tailwind dinámicas
         btn.className = `${sede.color} hover:opacity-90 p-6 rounded-xl text-xl font-bold transition w-full shadow-lg mb-3 text-white flex justify-center items-center gap-2`;
         btn.innerHTML = sede.label;
         btn.onclick = () => guardarSede(sede.id);
@@ -94,7 +95,6 @@ function borrarConfig() {
 }
 
 function iniciarKiosco() {
-    // Buscar nombre bonito para mostrar en pantalla
     const sedeInfo = SEDES.find(s => s.id === currentSede);
     const nombreMostrar = sedeInfo ? sedeInfo.label.replace('🏢 ', '') : currentSede;
     
@@ -104,12 +104,14 @@ function iniciarKiosco() {
 
 // --- CONFIGURACIÓN DEL ESCÁNER ---
 function iniciarEscanner() {
-    // Usamos Html5Qrcode (versión core) para mayor control
-    const html5QrCode = new Html5Qrcode("reader");
+    if (html5QrCode) {
+        console.log("Reiniciando instancia existente...");
+    } else {
+        html5QrCode = new Html5Qrcode("reader");
+    }
     
     const config = { fps: 10, qrbox: { width: 250, height: 250 } };
     
-    // Preferir cámara trasera
     html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
     .catch(err => {
         console.error("Error al iniciar cámara", err);
@@ -117,8 +119,22 @@ function iniciarEscanner() {
     });
 }
 
+async function recargarCamara() {
+    if (html5QrCode) {
+        try {
+            await html5QrCode.stop();
+            html5QrCode.clear();
+        } catch (error) {
+            console.warn("Error al detener cámara:", error);
+        }
+    }
+    setTimeout(() => {
+        iniciarEscanner();
+    }, 500);
+}
+
 function onScanSuccess(decodedText, decodedResult) {
-    if (!isScanning) return; // Bloqueo temporal para no saturar
+    if (!isScanning) return; 
 
     isScanning = false; 
     enviarAsistencia(decodedText);
@@ -131,8 +147,8 @@ async function enviarAsistencia(cedulaQr) {
     try {
         const payload = {
             cedula: cedulaQr,
-            sede: currentSede, // Enviamos la sede actual (ej: "Edificio Tulcán")
-            tipo_manual: manualMode
+            sede: currentSede, 
+            tipo_manual: manualMode // Se envía el modo persistente actual
         };
 
         const response = await fetch('../controllers/RegistrarAsistencia.php', {
@@ -141,7 +157,6 @@ async function enviarAsistencia(cedulaQr) {
             body: JSON.stringify(payload)
         });
 
-        // Parseo seguro del JSON
         let data;
         try {
             data = await response.json();
@@ -170,38 +185,48 @@ async function enviarAsistencia(cedulaQr) {
         mostrarMensaje('🔌', 'ERROR RED', 'Fallo de conexión', '', 'text-red-500');
     }
 
-    // Reiniciar estado después de 3.5 segundos
     setTimeout(() => {
         ocultarMensaje();
-        resetManualMode(); 
+        // NOTA: YA NO reseteamos el modo manual aquí. 
+        // Se mantiene hasta que el usuario lo cambie.
         isScanning = true;
     }, 3500);
 }
 
 // --- MODOS MANUALES (FORZAR) ---
-function activarModoManual(tipo) {
-    manualMode = tipo;
-    const texto = document.getElementById('modoManualTexto');
-    const indicador = document.getElementById('manualIndicator');
-    
-    texto.textContent = tipo;
-    indicador.classList.remove('hidden');
-
-    // Feedback visual en botones
+// Función actualizada para Toggle y Persistencia
+function toggleModoManual(tipo) {
     const btnEntrada = document.getElementById('btnEntrada');
     const btnSalida = document.getElementById('btnSalida');
 
-    if(tipo === 'ENTRADA') {
-        btnEntrada.classList.add('bg-green-800', 'text-white');
-        btnSalida.classList.remove('bg-red-800', 'text-white');
-    } else {
-        btnSalida.classList.add('bg-red-800', 'text-white');
-        btnEntrada.classList.remove('bg-green-800', 'text-white');
+    // 1. Si ya estaba activo este modo, lo desactivamos (Toggle OFF)
+    if (manualMode === tipo) {
+        resetManualMode();
+        return;
     }
 
-    // Cancelar manual si no escanea en 10 segundos
-    clearTimeout(manualTimeout);
-    manualTimeout = setTimeout(resetManualMode, 10000);
+    // 2. Si es un modo nuevo, lo activamos (Toggle ON)
+    manualMode = tipo;
+    
+    // Actualizar Texto de Alerta
+    const texto = document.getElementById('modoManualTexto');
+    const indicador = document.getElementById('manualIndicator');
+    texto.textContent = tipo;
+    indicador.classList.remove('hidden');
+
+    // Actualizar Botones (Visual)
+    // Primero limpiamos estilos de ambos
+    btnEntrada.classList.remove('bg-green-800', 'text-white', 'ring-4', 'ring-green-500');
+    btnSalida.classList.remove('bg-red-800', 'text-white', 'ring-4', 'ring-red-500');
+
+    // Aplicamos estilo al activo
+    if(tipo === 'ENTRADA') {
+        btnEntrada.classList.add('bg-green-800', 'text-white', 'ring-4', 'ring-green-500');
+    } else {
+        btnSalida.classList.add('bg-red-800', 'text-white', 'ring-4', 'ring-red-500');
+    }
+
+    // NOTA: Eliminamos el setTimeout para que sea persistente
 }
 
 function resetManualMode() {
@@ -209,8 +234,11 @@ function resetManualMode() {
     const indicador = document.getElementById('manualIndicator');
     if(indicador) indicador.classList.add('hidden');
     
-    document.getElementById('btnEntrada').classList.remove('bg-green-800', 'text-white');
-    document.getElementById('btnSalida').classList.remove('bg-red-800', 'text-white');
+    const btnEntrada = document.getElementById('btnEntrada');
+    const btnSalida = document.getElementById('btnSalida');
+
+    btnEntrada.classList.remove('bg-green-800', 'text-white', 'ring-4', 'ring-green-500');
+    btnSalida.classList.remove('bg-red-800', 'text-white', 'ring-4', 'ring-red-500');
 }
 
 // --- UTILS ---
@@ -220,7 +248,6 @@ function mostrarMensaje(icon, title, name, time, colorClass) {
     
     const titleEl = document.getElementById('statusTitle');
     titleEl.textContent = title;
-    // Resetear clases y aplicar las nuevas
     titleEl.className = `text-4xl font-bold text-center ${colorClass}`;
 
     document.getElementById('statusName').textContent = name;
@@ -237,6 +264,6 @@ function playAudio(type) {
     const audio = document.getElementById(type === 'success' ? 'soundSuccess' : 'soundError');
     if(audio) {
         audio.currentTime = 0;
-        audio.play().catch(e => console.log("Audio bloqueado por navegador (interacción requerida)"));
+        audio.play().catch(e => console.log("Audio bloqueado por navegador"));
     }
 }

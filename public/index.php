@@ -52,9 +52,17 @@
             <h1 class="text-xl font-bold tracking-wider">REGISTRO DE ASISTENCIA</h1>
             <p id="lblSede" class="text-sm text-gray-400 font-mono mt-1 font-bold">CARGANDO SEDE...</p>
             
-            <button id="btnResetConfig" class="text-[10px] text-gray-700 mt-2 hover:text-gray-500 underline">
-                Cambiar Ubicación
-            </button>
+            <div class="flex justify-center items-center gap-3 mt-3">
+                <button id="btnResetConfig" class="text-[10px] text-gray-600 hover:text-gray-400 underline uppercase tracking-wide transition">
+                    Cambiar Ubicación
+                </button>
+                
+                <span class="text-gray-700 text-[10px]">|</span>
+                
+                <a href="../admin/login.php" class="text-[10px] text-gray-600 hover:text-gray-400 underline uppercase tracking-wide transition">
+                    Acceso Administrador
+                </a>
+            </div>
         </div>
 
         <div class="relative w-full aspect-square bg-gray-800 rounded-2xl border-4 border-gray-700 overflow-hidden shadow-2xl my-4">
@@ -67,6 +75,12 @@
                 <p id="statusName" class="text-lg text-gray-300 mt-2 text-center px-4">Juan Perez</p>
                 <p id="statusTime" class="text-sm font-mono text-gray-400 mt-4">08:00:00</p>
             </div>
+        </div>
+
+        <div class="flex justify-center mb-4">
+            <button id="btnReloadCam" class="flex items-center gap-2 text-[10px] text-gray-500 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded-full border border-gray-700 transition">
+                <span>🔄</span> RECARGAR CÁMARA
+            </button>
         </div>
 
         <div class="grid grid-cols-2 gap-4 mb-6">
