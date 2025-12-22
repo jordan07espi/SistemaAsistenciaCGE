@@ -105,6 +105,9 @@
 
     <script src="assets/js/kiosco.js"></script>
 
+
+    
+
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
