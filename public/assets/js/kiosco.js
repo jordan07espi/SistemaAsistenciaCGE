@@ -6,7 +6,6 @@ let isScanning = true;
 let currentSede = localStorage.getItem('asistencia_sede');
 let manualMode = null; 
 let SEDES = []; 
-let lastReloadTime = 0; // Para controlar doble clic de pánico
 
 // --- INICIO ---
 document.addEventListener('DOMContentLoaded', async () => {
@@ -15,7 +14,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btnResetConfig').addEventListener('click', borrarConfig);
     document.getElementById('btnToggleMaestros').addEventListener('click', toggleVisibilidadMaestros);
     
-    // Botón Recarga
+    // Botón Recarga (Ahora fuerza reinicio total)
     const btnReload = document.getElementById('btnReloadCam');
     if (btnReload) btnReload.addEventListener('click', recargarCamara);
 
@@ -52,7 +51,7 @@ function toggleVisibilidadMaestros() {
     }
 }
 
-// --- LOGICA SEDES (Sin cambios mayores) ---
+// --- LOGICA SEDES ---
 async function cargarSedesBackend() {
     try {
         const res = await fetch('../controllers/SedeController.php'); 
@@ -67,7 +66,7 @@ function generarBotonesSedes() {
     c.innerHTML = '';
     SEDES.forEach(s => {
         const b = document.createElement('button');
-        b.className = `${s.color} p-4 rounded-xl text-lg font-bold text-white w-full shadow-lg`;
+        b.className = `${s.color} p-4 rounded-xl text-lg font-bold text-white w-full shadow-lg mb-2`;
         b.textContent = s.label;
         b.onclick = () => guardarSede(s.id);
         c.appendChild(b);
@@ -84,7 +83,7 @@ function guardarSede(id) {
 function borrarConfig() {
     if(confirm("¿Cambiar ubicación?")) {
         localStorage.removeItem('asistencia_sede');
-        location.reload();
+        window.location.reload();
     }
 }
 
@@ -94,66 +93,43 @@ function iniciarKiosco() {
     iniciarEscanner();
 }
 
-// --- CÁMARA ROBUSTA ---
+// --- CÁMARA (LÓGICA BLINDADA) ---
 function iniciarEscanner() {
-    // 1. Limpieza Nuclear previa
+    // Limpieza preventiva
     if (html5QrCode) {
-        try { html5QrCode.stop(); } catch(e){}
+        try { html5QrCode.clear(); } catch(e){}
         html5QrCode = null;
     }
-    document.getElementById('reader').innerHTML = ''; // Elimina videos zombies
+    document.getElementById('reader').innerHTML = ''; 
 
-    // 2. Nueva Instancia
     html5QrCode = new Html5Qrcode("reader");
     
-    // Configuración ajustada para rendimiento
     const config = { 
         fps: 10, 
         qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.0, 
-        disableFlip: false 
+        aspectRatio: 1.0
     };
     
+    // Usamos facingMode environment (cámara trasera)
     html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
     .catch(err => {
-        console.error("Error start camera", err);
+        console.error("Fallo al iniciar cámara:", err);
+        // Si falla al iniciar, mostrar mensaje de ayuda
         mostrarMensaje('📷', 'ERROR CÁMARA', 'Presione Recargar', '', 'text-red-500');
     });
 }
 
-async function recargarCamara() {
-    const ahora = Date.now();
+// === SOLUCIÓN DEFINITIVA PARA MÓVILES ===
+function recargarCamara() {
+    // Mostramos feedback visual inmediato
+    mostrarMensaje("🔄", "REINICIANDO...", "Recargando sistema...", "", "text-blue-500");
     
-    // Si presiona 2 veces en menos de 3 segundos -> RECARGA TOTAL DE PÁGINA
-    if (ahora - lastReloadTime < 3000) {
-        if(confirm("¿La cámara sigue trabada? Forzar reinicio de página?")) {
-            window.location.reload(true);
-            return;
-        }
-    }
-    lastReloadTime = ahora;
-
-    mostrarMensaje("🔄", "REINICIANDO...", "Limpiando sensor...", "", "text-blue-500");
-
-    // 1. Intentar detener suavemente
-    if (html5QrCode) {
-        try {
-            await html5QrCode.stop();
-            html5QrCode.clear();
-        } catch (e) { console.warn("Stop falló, forzando limpieza DOM"); }
-    }
-
-    // 2. DESTRUCCIÓN TOTAL DEL DOM DEL LECTOR
-    // Esto quita cualquier etiqueta <video> pegada que causa el congelamiento
-    const readerDiv = document.getElementById('reader');
-    readerDiv.innerHTML = ''; 
-    html5QrCode = null;
-
-    // 3. Pequeña pausa para que el navegador libere el recurso
+    // Esperamos 500ms para que el usuario vea que algo pasa y RECARGAMOS LA PÁGINA
+    // Esto es el equivalente a lo que te pasaron de 'window.location.href', 
+    // pero 'reload()' es más efectivo para limpiar la memoria del navegador.
     setTimeout(() => {
-        ocultarMensaje();
-        iniciarEscanner();
-    }, 1000);
+        window.location.reload();
+    }, 500);
 }
 
 function onScanSuccess(decodedText) {
@@ -194,10 +170,10 @@ async function enviarAsistencia(cedulaQr) {
     setTimeout(() => {
         ocultarMensaje();
         isScanning = true;
-    }, 3000);
+    }, 3000); // 3 segundos para leer el mensaje
 }
 
-// --- MODALES Y UI ---
+// --- UI UTILS ---
 function mostrarMensaje(icon, title, name, time, colorClass) {
     const m = document.getElementById('statusMessage');
     document.getElementById('statusIcon').textContent = icon;
