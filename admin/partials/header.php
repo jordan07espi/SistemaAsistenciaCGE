@@ -17,6 +17,7 @@ $paginaActual = basename($_SERVER['PHP_SELF']);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - Control Asistencia</title>
+    <link rel="icon" type="image/png" href="../public/assets/img/icon-192.png">
     <link rel="manifest" href="../manifest.json">
     <meta name="theme-color" content="#2563eb">
     <script>
@@ -43,7 +44,7 @@ $paginaActual = basename($_SERVER['PHP_SELF']);
         <aside id="sidebar" class="w-64 bg-slate-900 text-white flex flex-col fixed inset-y-0 left-0 z-50 transform -translate-x-full transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:inset-0 shadow-2xl md:shadow-none">
             
             <div class="p-6 text-center font-bold text-xl border-b border-gray-700 flex justify-between items-center md:block">
-                <span>🛡️ PANEL ADMIN</span>
+                <span>🛡️ DANIELSOFT</span>
                 <button id="closeSidebarBtn" class="md:hidden text-gray-400 hover:text-white">
                     <i class="ph ph-x text-2xl"></i>
                 </button>

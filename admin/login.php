@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" href="../public/assets/img/icon-192.png">
     <title>Login - Control Asistencia</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -12,7 +13,7 @@
         <div class="text-center mb-8">
             <img src="../public/assets/img/icon-512.png" alt="Logo CGE" class="mx-auto h-24 w-auto mb-4 drop-shadow-md">
             
-            <h1 class="text-2xl font-bold text-slate-800">Acceso Administrativo</h1>
+            <h1 class="text-2xl font-bold text-slate-800">DanielSoft</h1>
             <p class="text-sm text-gray-500">Ingresa tus credenciales</p>
         </div>
 
