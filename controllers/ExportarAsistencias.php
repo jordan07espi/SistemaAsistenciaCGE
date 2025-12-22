@@ -19,7 +19,7 @@ if (!isset($_SESSION['admin_id'])) {
 
 require_once __DIR__ . '/../models/AsistenciaDAO.php';
 
-// Configurar Zona Horaria para cálculos correctos
+// Configurar Zona Horaria
 date_default_timezone_set('America/Guayaquil');
 
 $inicio = $_GET['inicio'] ?? date('Y-m-d');
@@ -28,61 +28,59 @@ $sede   = $_GET['sede']   ?? 'TODAS';
 
 try {
     $dao = new AsistenciaDAO();
-    // Usamos el NUEVO método ordenado
+    // 1. Obtener datos ordenados ALFABÉTICAMENTE para cálculo correcto
     $raw_data = $dao->obtenerReporteParaExcel($inicio, $fin, $sede);
 
-    // --- PROCESAMIENTO DE DATOS (Consolidar Entradas y Salidas) ---
+    // 2. Procesamiento (Consolidar Entradas y Salidas)
     $filas_consolidadas = [];
-    $pendientes = []; // Array temporal para guardar entradas abiertas: [colab_id => data_entrada]
+    $pendientes = []; 
 
     foreach ($raw_data as $row) {
         $id = $row['colaborador_id'];
         
         if ($row['tipo'] === 'ENTRADA') {
-            // Si ya tenía una entrada previa sin cerrar (olvidó marcar salida), la guardamos incompleta
             if (isset($pendientes[$id])) {
                 $filas_consolidadas[] = armarFila($pendientes[$id], null);
             }
-            // Registrar nueva entrada pendiente
             $pendientes[$id] = $row;
         } 
         elseif ($row['tipo'] === 'SALIDA') {
             if (isset($pendientes[$id])) {
-                // ¡MATCH! Tenemos entrada y salida. Cerramos el ciclo.
                 $filas_consolidadas[] = armarFila($pendientes[$id], $row);
-                unset($pendientes[$id]); // Limpiar pendiente
+                unset($pendientes[$id]); 
             } else {
-                // Salida huérfana (sin entrada registrada en este rango)
                 $filas_consolidadas[] = armarFila(null, $row);
             }
         }
     }
     
-    // Procesar los que quedaron pendientes al final (Entradas sin Salida)
     foreach ($pendientes as $p) {
         $filas_consolidadas[] = armarFila($p, null);
     }
 
+    // =================================================================
+    // 3. NUEVO: REORDENAMIENTO CRONOLÓGICO (Llegada Primero -> Último)
+    // =================================================================
+    usort($filas_consolidadas, function($a, $b) {
+        // Convertimos fechas a timestamp para comparar
+        $t1 = strtotime(str_replace('/', '-', $a['fecha']) . ' ' . ($a['hora_in'] !== '--:--' ? $a['hora_in'] : $a['hora_out']));
+        $t2 = strtotime(str_replace('/', '-', $b['fecha']) . ' ' . ($b['hora_in'] !== '--:--' ? $b['hora_in'] : $b['hora_out']));
+        return $t1 - $t2;
+    });
+
     // --- CREAR DOCUMENTO EXCEL ---
     $spreadsheet = new Spreadsheet();
     $sheet = $spreadsheet->getActiveSheet();
-    $sheet->setTitle('Reporte Detallado');
+    $sheet->setTitle('Reporte Cronológico');
 
-    // Encabezados Actualizados
+    // Encabezados
     $headers = [
-        'FECHA', 
-        'CÉDULA', 
-        'NOMBRE COMPLETO', 
-        'ORIGEN', 
-        'SEDE', 
-        'HORA ENTRADA', 
-        'HORA SALIDA', 
-        'TIEMPO TRABAJADO', 
-        'MODO'
+        'FECHA', 'CÉDULA', 'NOMBRE COMPLETO', 'ORIGEN', 'SEDE', 
+        'HORA ENTRADA', 'HORA SALIDA', 'TIEMPO TRABAJADO', 'MODO'
     ];
     $sheet->fromArray($headers, NULL, 'A1');
 
-    // Estilo Encabezados
+    // Estilos
     $headerStyle = [
         'font' => ['bold' => true, 'color' => ['argb' => Color::COLOR_WHITE]],
         'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['argb' => 'FF0056b3']],
@@ -103,14 +101,12 @@ try {
             $sheet->setCellValue('C' . $rowIdx, $dato['nombre']);
             $sheet->setCellValue('D' . $rowIdx, $dato['origen']);
             $sheet->setCellValue('E' . $rowIdx, $dato['sede']);
-            
             $sheet->setCellValue('F' . $rowIdx, $dato['hora_in']);
             $sheet->setCellValue('G' . $rowIdx, $dato['hora_out']);
             $sheet->setCellValue('H' . $rowIdx, $dato['tiempo']);
             $sheet->setCellValue('I' . $rowIdx, $dato['modo']);
 
-            // Alerta visual si falta marca (Incompleto)
-            if ($dato['tiempo'] === '--:--' || $dato['tiempo'] === 'Sin Salida' || $dato['tiempo'] === 'Sin Entrada') {
+            if ($dato['tiempo'] === '--:--' || strpos($dato['tiempo'], 'Sin') !== false) {
                 $sheet->getStyle('H' . $rowIdx)->getFont()->getColor()->setARGB(Color::COLOR_RED);
             }
 
@@ -118,13 +114,13 @@ try {
         }
     }
 
-    // Auto-ajustar columnas
+    // Auto-ajuste
     foreach (range('A', 'I') as $col) {
         $sheet->getColumnDimension($col)->setAutoSize(true);
     }
 
     // Descarga
-    $filename = "Reporte_Horas_" . date('Ymd_His') . ".xlsx";
+    $filename = "Reporte_Cronologico_" . date('Ymd_His') . ".xlsx";
     if (ob_get_length()) ob_end_clean();
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     header('Content-Disposition: attachment;filename="' . $filename . '"');
@@ -139,46 +135,43 @@ try {
     echo "Error: " . $e->getMessage();
 }
 
-// --- FUNCIÓN AUXILIAR PARA ARMAR LA FILA ---
+// Función auxiliar (se mantiene igual)
 function armarFila($entrada, $salida) {
-    // Datos base (preferimos datos de Entrada, si no existe, de Salida)
     $base = $entrada ? $entrada : $salida;
     
+    // Detectamos la fecha real de la operación
+    $fechaHora = $base['fecha_hora'];
+    
     $fila = [
-        'fecha'    => date('d/m/Y', strtotime($base['fecha_hora'])),
+        'fecha'    => date('d/m/Y', strtotime($fechaHora)),
         'cedula'   => $base['cedula'],
         'nombre'   => $base['nombre_completo'],
         'origen'   => $base['colaborador_origen'],
         'sede'     => $base['sede_registro'],
         'modo'     => $base['modo_registro'],
-        'hora_in'  => '',
-        'hora_out' => '',
-        'tiempo'   => ''
+        'hora_in'  => '--:--',
+        'hora_out' => '--:--',
+        'tiempo'   => '--:--'
     ];
 
     if ($entrada && $salida) {
-        // CASO IDEAL: Entrada y Salida completas
         $dt1 = new DateTime($entrada['fecha_hora']);
         $dt2 = new DateTime($salida['fecha_hora']);
         $interval = $dt1->diff($dt2);
         
         $fila['hora_in']  = $dt1->format('H:i:s');
         $fila['hora_out'] = $dt2->format('H:i:s');
-        // Formato H horas, I minutos (ej: 08:30)
         $fila['tiempo']   = $interval->format('%H:%I:%S'); 
 
     } elseif ($entrada && !$salida) {
-        // CASO: Solo Entrada (Trabajando o olvidó salir)
         $fila['hora_in']  = date('H:i:s', strtotime($entrada['fecha_hora']));
-        $fila['hora_out'] = '--:--';
         $fila['tiempo']   = 'Sin Salida';
 
     } elseif (!$entrada && $salida) {
-        // CASO: Solo Salida (Olvidó entrar o turno cruzado fuera de rango)
-        $fila['hora_in']  = '--:--';
         $fila['hora_out'] = date('H:i:s', strtotime($salida['fecha_hora']));
         $fila['tiempo']   = 'Sin Entrada';
     }
 
     return $fila;
 }
+?>
