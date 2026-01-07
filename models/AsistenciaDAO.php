@@ -11,15 +11,8 @@ class AsistenciaDAO {
 
     /**
      * Registra una nueva asistencia en la base de datos.
-     * * @param int $colaboradorId ID del colaborador
-     * @param string $tipo 'ENTRADA' o 'SALIDA'
-     * @param string $sede 'INSTITUTO' o 'CAPACITADORA'
-     * @param string $modo 'QR_AUTO', 'QR_MANUAL' o 'ADMIN_MANUAL'
-     * @param string|null $observacion Texto opcional
-     * @return bool True si se guardó correctamente
      */
     public function registrar($colaboradorId, $tipo, $sede, $modo = 'QR_AUTO', $observacion = null) {
-        // Usamos NOW() para que la fecha sea exactamente la del servidor de base de datos
         $sql = "INSERT INTO asistencias (colaborador_id, tipo, sede_registro, modo_registro, observacion, fecha_hora) 
                 VALUES (:id, :tipo, :sede, :modo, :obs, NOW())";
         
@@ -34,8 +27,7 @@ class AsistenciaDAO {
     }
 
     /**
-     * Obtiene el historial de hoy (útil para el Dashboard del Admin en tiempo real).
-     * Incluye el nombre del colaborador haciendo JOIN.
+     * Obtiene el historial de hoy (útil para el Dashboard en tiempo real).
      */
     public function obtenerHistorialHoy() {
         $sql = "SELECT a.*, c.nombre_completo, c.cedula, c.origen 
@@ -48,7 +40,7 @@ class AsistenciaDAO {
     }
 
     /**
-     * Obtiene el último registro de un colaborador (útil para validaciones extra o correcciones)
+     * Obtiene el último registro de un colaborador.
      */
     public function obtenerUltimoRegistro($colaboradorId) {
         $sql = "SELECT * FROM asistencias 
@@ -62,7 +54,8 @@ class AsistenciaDAO {
     }
 
     /**
-     * Modificado para soportar paginación opcional
+     * Filtra el reporte de asistencias con paginación opcional.
+     * Mantiene la estructura original de la base de datos.
      */
     public function filtrarReporte($inicio, $fin, $sede = '', $limit = null, $offset = null) {
         $sql = "SELECT a.*, c.nombre_completo, c.cedula, c.origen as colaborador_origen
@@ -79,7 +72,7 @@ class AsistenciaDAO {
 
         $sql .= " ORDER BY a.fecha_hora DESC";
 
-        // Si mandamos límites, aplicamos paginación
+        // Aplicar Paginación si se envían los límites
         if ($limit !== null && $offset !== null) {
             $sql .= " LIMIT " . (int)$limit . " OFFSET " . (int)$offset;
         }
@@ -90,11 +83,14 @@ class AsistenciaDAO {
     }
 
     /**
-     * Cuenta el total de registros con los mismos filtros (para la paginación)
+     * CORRECCIÓN IMPORTANTE: 
+     * Cuenta el total de registros usando la misma lógica (INNER JOIN) que el reporte.
+     * Esto asegura que la paginación sea exacta.
      */
     public function contarReporte($inicio, $fin, $sede = '') {
         $sql = "SELECT COUNT(*) as total
                 FROM asistencias a
+                INNER JOIN colaboradores c ON a.colaborador_id = c.id
                 WHERE DATE(a.fecha_hora) BETWEEN :inicio AND :fin";
         
         $params = [':inicio' => $inicio, ':fin' => $fin];
@@ -106,31 +102,22 @@ class AsistenciaDAO {
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
-        return $stmt->fetch()['total'];
+        $resultado = $stmt->fetch();
+        return $resultado ? $resultado['total'] : 0;
     }
 
     /**
-     * Obtiene el último registro de asistencia de un colaborador
-     * (Usado para la lógica anti-rebote)
-     */
-    public function obtenerUltimaAsistencia($colaboradorId) {
-        $sql = "SELECT * FROM asistencias WHERE colaborador_id = :id ORDER BY fecha_hora DESC LIMIT 1";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([':id' => $colaboradorId]);
-        return $stmt->fetch();
-    }
-
-    /**
-     * DATOS PARA GRÁFICOS (Lo usaremos en el siguiente paso)
+     * Obtiene estadísticas para los gráficos (Pastel: Dentro/Fuera).
      */
     public function obtenerEstadisticasHoy() {
-        // Contar presentes (DENTRO) vs ausentes (FUERA)
         $sql = "SELECT estado_actual, COUNT(*) as total FROM colaboradores GROUP BY estado_actual";
         return $this->db->query($sql)->fetchAll();
     }
 
+    /**
+     * Obtiene estadísticas para los gráficos (Barras: Últimos 7 días).
+     */
     public function obtenerAsistenciasSemana() {
-        // Contar entradas de los últimos 7 días
         $sql = "SELECT DATE(fecha_hora) as fecha, COUNT(*) as total 
                 FROM asistencias 
                 WHERE tipo = 'ENTRADA' 
@@ -141,7 +128,7 @@ class AsistenciaDAO {
     }
 
     /**
-     * SSE: Obtener el ID más alto actual (punto de partida)
+     * SSE: Obtener el ID más alto actual.
      */
     public function obtenerUltimoId() {
         $sql = "SELECT MAX(id) as max_id FROM asistencias";
@@ -150,7 +137,7 @@ class AsistenciaDAO {
     }
 
     /**
-     * SSE: Buscar registros nuevos posteriores a un ID dado
+     * SSE: Buscar registros nuevos para actualizaciones en tiempo real.
      */
     public function obtenerNuevosRegistros($ultimoIdConocido) {
         $sql = "SELECT a.*, c.nombre_completo, c.cedula, c.origen 
@@ -165,8 +152,8 @@ class AsistenciaDAO {
     }
 
     /**
-     * NUEVO MÉTODO PARA EXCEL CONSOLIDADO
-     * Trae los registros ordenados por Nombre y Fecha ASC para poder emparejar Entrada-Salida
+     * Obtiene datos para el Excel Consolidado.
+     * Ordena por nombre y fecha para poder calcular horas trabajadas.
      */
     public function obtenerReporteParaExcel($inicio, $fin, $sede = '') {
         $sql = "SELECT a.*, c.nombre_completo, c.cedula, c.origen as colaborador_origen
@@ -181,7 +168,7 @@ class AsistenciaDAO {
             $params[':sede'] = $sede;
         }
 
-        // CLAVE: Ordenar por usuario y luego cronológicamente ascendente
+        // Orden vital para el algoritmo de consolidación (Entrada-Salida)
         $sql .= " ORDER BY c.nombre_completo ASC, a.fecha_hora ASC";
 
         $stmt = $this->db->prepare($sql);
@@ -189,3 +176,4 @@ class AsistenciaDAO {
         return $stmt->fetchAll();
     }
 }
+?>

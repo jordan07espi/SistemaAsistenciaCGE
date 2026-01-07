@@ -75,7 +75,7 @@
         <form id="formNuevoColaborador" class="space-y-4">
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Cédula / ID</label><input type="text" name="cedula" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none" required></div>
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label><input type="text" name="nombre" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none" required></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Origen</label><select name="origen" class="w-full border rounded-lg p-2 bg-white"><option value="INSTITUTO">INSTITUTO</option><option value="CAPACITADORA">CAPACITADORA</option></select></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Origen</label><select name="origen" class="w-full border rounded-lg p-2 bg-white"><option value="INSTITUTO">INSTITUTO</option><option value="CAPACITADORA">CAPACITADORA</option><option value="HOLDING-CGE">HOLDING CGE</option></select></div>
             <div class="flex justify-end gap-3 mt-6">
                 <button type="button" onclick="cerrarModalColaborador()" class="text-gray-500 hover:text-gray-700">Cancelar</button>
                 <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold shadow">Guardar</button>
@@ -91,7 +91,7 @@
             <input type="hidden" name="id" id="editId">
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Cédula / ID</label><input type="text" name="cedula" id="editCedula" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-yellow-500 outline-none" required></div>
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Nombre Completo</label><input type="text" name="nombre" id="editNombre" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-yellow-500 outline-none" required></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Origen</label><select name="origen" id="editOrigen" class="w-full border rounded-lg p-2 bg-white"><option value="INSTITUTO">INSTITUTO</option><option value="CAPACITADORA">CAPACITADORA</option></select></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Origen</label><select name="origen" id="editOrigen" class="w-full border rounded-lg p-2 bg-white"><option value="INSTITUTO">INSTITUTO</option><option value="CAPACITADORA">CAPACITADORA</option><option value="HOLDING-CGE">HOLDING CGE</option></select></div>
             <div class="flex justify-end gap-3 mt-6">
                 <button type="button" onclick="cerrarModalEditar()" class="text-gray-500 hover:text-gray-700">Cancelar</button>
                 <button type="submit" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-bold shadow">Actualizar</button>

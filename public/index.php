@@ -31,7 +31,6 @@
             overflow: hidden;
             background-color: #000;
         }
-        /* Forzar que el video ocupe todo el espacio y no se desborde */
         #reader video {
             object-fit: cover;
             width: 100% !important;
@@ -40,7 +39,7 @@
         }
     </style>
 </head>
-<body class="bg-gray-900 text-white h-screen flex flex-col items-center justify-start pt-10 relative overflow-hidden bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-800 via-gray-900 to-black">
+<body class="bg-gray-900 text-white h-screen flex flex-col items-center justify-start pt-8 relative overflow-hidden bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-800 via-gray-900 to-black">
 
     <div id="setupModal" class="fixed inset-0 bg-black/95 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4 hidden">
         <h2 class="text-2xl font-bold mb-6 text-center text-white">Configuración del Dispositivo</h2>
@@ -62,7 +61,16 @@
             </div>
         </div>
 
-        <div class="relative w-full aspect-square bg-black rounded-3xl border border-gray-700/50 overflow-hidden shadow-2xl shadow-black/50 my-2 backdrop-blur-sm">
+        <div id="estadoVisualContainer" class="mb-4 text-center p-3 rounded-xl border-2 transition-all duration-500 bg-gray-800/50 border-gray-600">
+            <h2 id="estadoVisualTexto" class="text-2xl md:text-3xl font-black uppercase tracking-widest text-white drop-shadow-lg animate-pulse">
+                ESCANEAR QR
+            </h2>
+            <p id="estadoVisualSub" class="text-[10px] font-bold uppercase tracking-wide text-gray-400">
+                ESPERANDO LECTURA
+            </p>
+        </div>
+
+        <div class="relative w-full aspect-square bg-black rounded-3xl border border-gray-700/50 overflow-hidden shadow-2xl shadow-black/50 mb-4 backdrop-blur-sm">
             <div id="reader" class="w-full h-full"></div>
             <div class="scan-line z-10 shadow-[0_0_15px_rgba(239,68,68,0.6)]"></div>
             
@@ -111,9 +119,7 @@
 
     <script src="assets/js/kiosco.js"></script>
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => navigator.serviceWorker.register('../service-worker.js'));
-      }
+      if ('serviceWorker' in navigator) navigator.serviceWorker.register('../service-worker.js');
     </script>
 </body>
 </html>

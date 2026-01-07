@@ -9,15 +9,15 @@ let SEDES = [];
 
 // --- INICIO ---
 document.addEventListener('DOMContentLoaded', async () => {
+    // Event Listeners
     document.getElementById('btnEntrada').addEventListener('click', () => toggleModoManual('ENTRADA'));
     document.getElementById('btnSalida').addEventListener('click', () => toggleModoManual('SALIDA'));
     document.getElementById('btnResetConfig').addEventListener('click', borrarConfig);
     document.getElementById('btnToggleMaestros').addEventListener('click', toggleVisibilidadMaestros);
-    
-    // Botón Recarga (Ahora fuerza reinicio total)
     const btnReload = document.getElementById('btnReloadCam');
     if (btnReload) btnReload.addEventListener('click', recargarCamara);
 
+    // Iniciar lógica de Sede
     await cargarSedesBackend();
 
     if (!currentSede) {
@@ -32,7 +32,53 @@ document.addEventListener('DOMContentLoaded', async () => {
             iniciarKiosco();
         }
     }
+
+    // --- NUEVO: INICIAR RELOJ VISUAL ---
+    actualizarTextoVisual();
+    setInterval(actualizarTextoVisual, 60000); // Revisar cada minuto
 });
+
+// --- LÓGICA VISUAL (Horarios) ---
+function actualizarTextoVisual() {
+    // Si hay modo manual activo, no sobrescribimos con la hora
+    if (manualMode) return; 
+
+    const now = new Date();
+    const hora = now.getHours();
+    
+    const container = document.getElementById('estadoVisualContainer');
+    const titulo = document.getElementById('estadoVisualTexto');
+    const sub = document.getElementById('estadoVisualSub');
+
+    // Limpiar clases de color
+    container.classList.remove('bg-green-900/40', 'border-green-500', 'bg-red-900/40', 'border-red-500', 'bg-gray-800/50', 'border-gray-600');
+    titulo.classList.remove('text-green-400', 'text-red-400');
+
+    // LÓGICA HORARIA (Según lo que pediste)
+    // 07:00 AM - 11:59 AM -> ENTRADA
+    // 12:00 PM - Adelante -> SALIDA
+    
+    if (hora >= 7 && hora < 12) {
+        // ENTRADA
+        container.classList.add('bg-green-900/40', 'border-green-500');
+        titulo.classList.add('text-green-400');
+        titulo.textContent = "MARCANDO ENTRADA";
+        sub.textContent = "TURNO MATUTINO";
+    } else if (hora >= 12) {
+        // SALIDA (o reingresos tarde)
+        container.classList.add('bg-red-900/40', 'border-red-500');
+        titulo.classList.add('text-red-400');
+        titulo.textContent = "MARCANDO SALIDA";
+        sub.textContent = "TURNO VESPERTINO / SALIDA";
+    } else {
+        // HORARIO NO DEFINIDO (Madrugada)
+        container.classList.add('bg-gray-800/50', 'border-gray-600');
+        titulo.textContent = "ESCANEAR QR";
+        sub.textContent = "ESPERANDO LECTURA";
+    }
+}
+
+// --- RESTO DE FUNCIONES (Kiosco Standard) ---
 
 function toggleVisibilidadMaestros() {
     const contenedor = document.getElementById('controlesManuales');
@@ -51,7 +97,6 @@ function toggleVisibilidadMaestros() {
     }
 }
 
-// --- LOGICA SEDES ---
 async function cargarSedesBackend() {
     try {
         const res = await fetch('../controllers/SedeController.php'); 
@@ -93,9 +138,7 @@ function iniciarKiosco() {
     iniciarEscanner();
 }
 
-// --- CÁMARA (LÓGICA BLINDADA) ---
 function iniciarEscanner() {
-    // Limpieza preventiva
     if (html5QrCode) {
         try { html5QrCode.clear(); } catch(e){}
         html5QrCode = null;
@@ -103,33 +146,18 @@ function iniciarEscanner() {
     document.getElementById('reader').innerHTML = ''; 
 
     html5QrCode = new Html5Qrcode("reader");
+    const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
     
-    const config = { 
-        fps: 10, 
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.0
-    };
-    
-    // Usamos facingMode environment (cámara trasera)
     html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
     .catch(err => {
-        console.error("Fallo al iniciar cámara:", err);
-        // Si falla al iniciar, mostrar mensaje de ayuda
+        console.error("Fallo camara:", err);
         mostrarMensaje('📷', 'ERROR CÁMARA', 'Presione Recargar', '', 'text-red-500');
     });
 }
 
-// === SOLUCIÓN DEFINITIVA PARA MÓVILES ===
 function recargarCamara() {
-    // Mostramos feedback visual inmediato
-    mostrarMensaje("🔄", "REINICIANDO...", "Recargando sistema...", "", "text-blue-500");
-    
-    // Esperamos 500ms para que el usuario vea que algo pasa y RECARGAMOS LA PÁGINA
-    // Esto es el equivalente a lo que te pasaron de 'window.location.href', 
-    // pero 'reload()' es más efectivo para limpiar la memoria del navegador.
-    setTimeout(() => {
-        window.location.reload();
-    }, 500);
+    mostrarMensaje("🔄", "REINICIANDO...", "Espere...", "", "text-blue-500");
+    setTimeout(() => { window.location.reload(); }, 500);
 }
 
 function onScanSuccess(decodedText) {
@@ -138,7 +166,6 @@ function onScanSuccess(decodedText) {
     enviarAsistencia(decodedText);
 }
 
-// --- ENVÍO DATOS ---
 async function enviarAsistencia(cedulaQr) {
     mostrarMensaje("⏳", "PROCESANDO...", "Validando...", "", "text-white");
 
@@ -170,10 +197,9 @@ async function enviarAsistencia(cedulaQr) {
     setTimeout(() => {
         ocultarMensaje();
         isScanning = true;
-    }, 3000); // 3 segundos para leer el mensaje
+    }, 3000);
 }
 
-// --- UI UTILS ---
 function mostrarMensaje(icon, title, name, time, colorClass) {
     const m = document.getElementById('statusMessage');
     document.getElementById('statusIcon').textContent = icon;
@@ -190,7 +216,11 @@ function ocultarMensaje() {
 }
 
 function toggleModoManual(tipo) {
-    if (manualMode === tipo) { resetManualMode(); return; }
+    if (manualMode === tipo) { 
+        resetManualMode(); 
+        actualizarTextoVisual(); // Volver al texto automático
+        return; 
+    }
     
     manualMode = tipo;
     const txt = document.getElementById('modoManualTexto');
@@ -204,6 +234,16 @@ function toggleModoManual(tipo) {
     
     btn.classList.remove('bg-gray-800', 'text-gray-400');
     btn.classList.add(`bg-${color}-600`, `border-${color}-400`, 'text-white', 'ring-4', `ring-${color}-500/50`);
+    
+    // Actualizar visualmente el encabezado grande también
+    const container = document.getElementById('estadoVisualContainer');
+    const titulo = document.getElementById('estadoVisualTexto');
+    const sub = document.getElementById('estadoVisualSub');
+    
+    container.className = `mb-4 text-center p-3 rounded-xl border-2 transition-all duration-500 bg-${color}-900/40 border-${color}-500`;
+    titulo.className = `text-2xl md:text-3xl font-black uppercase tracking-widest text-${color}-400 drop-shadow-lg animate-pulse`;
+    titulo.textContent = `FORZANDO ${tipo}`;
+    sub.textContent = "MODO MANUAL ACTIVO";
 }
 
 function resetManualMode() {
