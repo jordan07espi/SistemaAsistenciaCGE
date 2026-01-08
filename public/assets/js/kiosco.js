@@ -7,17 +7,29 @@ let currentSede = localStorage.getItem('asistencia_sede');
 let manualMode = null; 
 let SEDES = []; 
 
+// Variables para el temporizador visual
+let maestrosTimeout = null; 
+let countdownInterval = null; 
+let secondsLeft = 15; 
+
 // --- INICIO ---
 document.addEventListener('DOMContentLoaded', async () => {
-    // Event Listeners
     document.getElementById('btnEntrada').addEventListener('click', () => toggleModoManual('ENTRADA'));
     document.getElementById('btnSalida').addEventListener('click', () => toggleModoManual('SALIDA'));
     document.getElementById('btnResetConfig').addEventListener('click', borrarConfig);
     document.getElementById('btnToggleMaestros').addEventListener('click', toggleVisibilidadMaestros);
+    
     const btnReload = document.getElementById('btnReloadCam');
     if (btnReload) btnReload.addEventListener('click', recargarCamara);
 
-    // Iniciar lógica de Sede
+    // EVENTO: Tocar pantalla reinicia el tiempo (si está en manual)
+    document.addEventListener('click', () => {
+        if (manualMode && secondsLeft < 15) {
+            secondsLeft = 15; 
+            actualizarTextoConTimer(); 
+        }
+    });
+
     await cargarSedesBackend();
 
     if (!currentSede) {
@@ -33,14 +45,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // --- NUEVO: INICIAR RELOJ VISUAL ---
+    // Iniciar Reloj Normal
     actualizarTextoVisual();
-    setInterval(actualizarTextoVisual, 60000); // Revisar cada minuto
+    setInterval(actualizarTextoVisual, 60000); 
 });
 
-// --- LÓGICA VISUAL (Horarios) ---
+// --- LÓGICA VISUAL (Reloj y Textos) ---
+
 function actualizarTextoVisual() {
-    // Si hay modo manual activo, no sobrescribimos con la hora
+    // Si hay modo manual activo, no tocamos nada (manda el timer)
     if (manualMode) return; 
 
     const now = new Date();
@@ -50,53 +63,154 @@ function actualizarTextoVisual() {
     const titulo = document.getElementById('estadoVisualTexto');
     const sub = document.getElementById('estadoVisualSub');
 
-    // Limpiar clases de color
-    container.classList.remove('bg-green-900/40', 'border-green-500', 'bg-red-900/40', 'border-red-500', 'bg-gray-800/50', 'border-gray-600');
-    titulo.classList.remove('text-green-400', 'text-red-400');
+    // RESET COMPLETO DE ESTILOS (Para limpiar lo que deja el modo manual)
+    container.className = "mb-4 text-center p-3 rounded-xl border-2 transition-all duration-500 bg-gray-800/50 border-gray-600";
+    titulo.className = "text-2xl md:text-3xl font-black uppercase tracking-widest text-white drop-shadow-md";
+    // Restaurar estilo pequeño por defecto para el subtítulo
+    sub.className = "text-[10px] font-bold uppercase tracking-wide text-gray-400";
 
-    // LÓGICA HORARIA (Según lo que pediste)
-    // 07:00 AM - 11:59 AM -> ENTRADA
-    // 12:00 PM - Adelante -> SALIDA
-    
     if (hora >= 7 && hora < 12) {
         // ENTRADA
+        container.classList.remove('bg-gray-800/50', 'border-gray-600');
         container.classList.add('bg-green-900/40', 'border-green-500');
         titulo.classList.add('text-green-400');
         titulo.textContent = "MARCANDO ENTRADA";
         sub.textContent = "TURNO MATUTINO";
     } else if (hora >= 12) {
-        // SALIDA (o reingresos tarde)
+        // SALIDA
+        container.classList.remove('bg-gray-800/50', 'border-gray-600');
         container.classList.add('bg-red-900/40', 'border-red-500');
         titulo.classList.add('text-red-400');
         titulo.textContent = "MARCANDO SALIDA";
         sub.textContent = "TURNO VESPERTINO / SALIDA";
     } else {
-        // HORARIO NO DEFINIDO (Madrugada)
-        container.classList.add('bg-gray-800/50', 'border-gray-600');
+        // MADRUGADA
         titulo.textContent = "ESCANEAR QR";
         sub.textContent = "ESPERANDO LECTURA";
     }
 }
 
-// --- RESTO DE FUNCIONES (Kiosco Standard) ---
+function actualizarTextoConTimer() {
+    if (!manualMode) return;
 
+    const titulo = document.getElementById('estadoVisualTexto');
+    const sub = document.getElementById('estadoVisualSub');
+
+    // AQUÍ ESTÁ EL CAMBIO: Ponemos el contador en el TÍTULO GIGANTE
+    titulo.textContent = `FORZANDO ${manualMode} (${secondsLeft}s)`;
+    
+    // El subtítulo solo da la instrucción (un poco más visible que antes)
+    sub.textContent = "TOCA LA PANTALLA PARA EXTENDER TIEMPO";
+    sub.className = "text-xs font-bold uppercase tracking-wide text-white animate-pulse";
+}
+
+// --- LÓGICA BOTONES MAESTROS ---
 function toggleVisibilidadMaestros() {
     const contenedor = document.getElementById('controlesManuales');
     const btnTexto = document.getElementById('btnToggleMaestros');
-    
+    const btnEntrada = document.getElementById('btnEntrada');
+    const btnSalida = document.getElementById('btnSalida');
+
+    if (maestrosTimeout) { clearTimeout(maestrosTimeout); maestrosTimeout = null; }
+
     if (contenedor.classList.contains('hidden')) {
+        // ABRIR MENÚ
+        const now = new Date();
+        const hora = now.getHours();
+        
+        btnEntrada.classList.remove('hidden');
+        btnSalida.classList.remove('hidden');
+
+        // INTELIGENCIA
+        if (hora >= 7 && hora < 12) {
+            btnEntrada.classList.add('hidden'); 
+        } else if (hora >= 12) {
+            btnSalida.classList.add('hidden'); 
+        }
+
         contenedor.classList.remove('hidden');
         setTimeout(() => contenedor.classList.remove('opacity-0', '-translate-y-4'), 10);
-        btnTexto.textContent = "Ocultar Controles";
+        btnTexto.textContent = "Cancelar";
         btnTexto.classList.add('text-red-400');
+
+        // Autocierre del menú (10s)
+        maestrosTimeout = setTimeout(() => { ocultarMaestros(); }, 10000);
+
     } else {
-        contenedor.classList.add('opacity-0', '-translate-y-4');
-        setTimeout(() => contenedor.classList.add('hidden'), 300);
-        btnTexto.textContent = "Botones Maestros";
-        btnTexto.classList.remove('text-red-400');
+        ocultarMaestros();
     }
 }
 
+function ocultarMaestros() {
+    const contenedor = document.getElementById('controlesManuales');
+    const btnTexto = document.getElementById('btnToggleMaestros');
+    
+    if (!contenedor) return;
+
+    contenedor.classList.add('opacity-0', '-translate-y-4');
+    setTimeout(() => contenedor.classList.add('hidden'), 300);
+    
+    btnTexto.textContent = "Botones Maestros";
+    btnTexto.classList.remove('text-red-400');
+    
+    if (maestrosTimeout) { clearTimeout(maestrosTimeout); maestrosTimeout = null; }
+}
+
+function toggleModoManual(tipo) {
+    if (manualMode === tipo) { 
+        resetManualMode(); 
+        return; 
+    }
+    
+    manualMode = tipo;
+    
+    // UI Indicador Inferior
+    const txt = document.getElementById('modoManualTexto');
+    const ind = document.getElementById('manualIndicator');
+    txt.textContent = tipo;
+    ind.classList.remove('hidden');
+
+    ocultarMaestros();
+
+    // Actualizar Estilos del Encabezado Gigante
+    const color = tipo === 'ENTRADA' ? 'green' : 'red';
+    const container = document.getElementById('estadoVisualContainer');
+    const titulo = document.getElementById('estadoVisualTexto');
+    
+    container.className = `mb-4 text-center p-3 rounded-xl border-2 transition-all duration-500 bg-${color}-900/40 border-${color}-500`;
+    titulo.className = `text-2xl md:text-3xl font-black uppercase tracking-widest text-${color}-400 drop-shadow-lg animate-pulse`;
+    
+    // INICIAR CUENTA REGRESIVA
+    startCountdown();
+}
+
+function startCountdown() {
+    if (countdownInterval) clearInterval(countdownInterval);
+    
+    secondsLeft = 15; 
+    actualizarTextoConTimer(); // Mostrar 15s inmediatamente en el título
+
+    countdownInterval = setInterval(() => {
+        secondsLeft--;
+        actualizarTextoConTimer();
+
+        if (secondsLeft <= 0) {
+            clearInterval(countdownInterval);
+            resetManualMode(); // Se acabó el tiempo
+        }
+    }, 1000);
+}
+
+function resetManualMode() {
+    manualMode = null;
+    document.getElementById('manualIndicator').classList.add('hidden');
+    
+    if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+    
+    actualizarTextoVisual(); // Volver al texto automático normal
+}
+
+// --- CONFIGURACIÓN & BACKEND --- (Sin cambios)
 async function cargarSedesBackend() {
     try {
         const res = await fetch('../controllers/SedeController.php'); 
@@ -139,10 +253,7 @@ function iniciarKiosco() {
 }
 
 function iniciarEscanner() {
-    if (html5QrCode) {
-        try { html5QrCode.clear(); } catch(e){}
-        html5QrCode = null;
-    }
+    if (html5QrCode) { try { html5QrCode.clear(); } catch(e){} html5QrCode = null; }
     document.getElementById('reader').innerHTML = ''; 
 
     html5QrCode = new Html5Qrcode("reader");
@@ -150,7 +261,6 @@ function iniciarEscanner() {
     
     html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
     .catch(err => {
-        console.error("Fallo camara:", err);
         mostrarMensaje('📷', 'ERROR CÁMARA', 'Presione Recargar', '', 'text-red-500');
     });
 }
@@ -163,6 +273,10 @@ function recargarCamara() {
 function onScanSuccess(decodedText) {
     if (!isScanning) return; 
     isScanning = false; 
+    
+    // Detener contador al escanear
+    if (countdownInterval) { clearInterval(countdownInterval); }
+
     enviarAsistencia(decodedText);
 }
 
@@ -182,12 +296,20 @@ async function enviarAsistencia(cedulaQr) {
             const color = data.tipo === 'ENTRADA' ? 'text-green-500' : 'text-blue-500';
             const icono = data.tipo === 'ENTRADA' ? '👋' : '🏠';
             mostrarMensaje(icono, data.tipo, data.colaborador, data.hora, color);
+            
+            // Éxito: Reset (One-Shot)
+            if (manualMode) resetManualMode();
+
         } else if (data.status === 'warning') {
             playAudio('error');
             mostrarMensaje('⚠️', 'ESPERA', data.message, '', 'text-yellow-400');
+            // Warning: Reiniciar contador
+            if (manualMode) startCountdown();
         } else {
             playAudio('error');
             mostrarMensaje('❌', 'ERROR', data.message, '', 'text-red-500');
+            // Error: Reiniciar contador
+            if (manualMode) startCountdown();
         }
     } catch (e) {
         playAudio('error');
@@ -213,50 +335,6 @@ function mostrarMensaje(icon, title, name, time, colorClass) {
 
 function ocultarMensaje() {
     document.getElementById('statusMessage').classList.add('hidden');
-}
-
-function toggleModoManual(tipo) {
-    if (manualMode === tipo) { 
-        resetManualMode(); 
-        actualizarTextoVisual(); // Volver al texto automático
-        return; 
-    }
-    
-    manualMode = tipo;
-    const txt = document.getElementById('modoManualTexto');
-    const ind = document.getElementById('manualIndicator');
-    txt.textContent = tipo;
-    ind.classList.remove('hidden');
-
-    resetEstilosBotones();
-    const btn = tipo === 'ENTRADA' ? document.getElementById('btnEntrada') : document.getElementById('btnSalida');
-    const color = tipo === 'ENTRADA' ? 'green' : 'red';
-    
-    btn.classList.remove('bg-gray-800', 'text-gray-400');
-    btn.classList.add(`bg-${color}-600`, `border-${color}-400`, 'text-white', 'ring-4', `ring-${color}-500/50`);
-    
-    // Actualizar visualmente el encabezado grande también
-    const container = document.getElementById('estadoVisualContainer');
-    const titulo = document.getElementById('estadoVisualTexto');
-    const sub = document.getElementById('estadoVisualSub');
-    
-    container.className = `mb-4 text-center p-3 rounded-xl border-2 transition-all duration-500 bg-${color}-900/40 border-${color}-500`;
-    titulo.className = `text-2xl md:text-3xl font-black uppercase tracking-widest text-${color}-400 drop-shadow-lg animate-pulse`;
-    titulo.textContent = `FORZANDO ${tipo}`;
-    sub.textContent = "MODO MANUAL ACTIVO";
-}
-
-function resetManualMode() {
-    manualMode = null;
-    document.getElementById('manualIndicator').classList.add('hidden');
-    resetEstilosBotones();
-}
-
-function resetEstilosBotones() {
-    ['btnEntrada', 'btnSalida'].forEach(id => {
-        const b = document.getElementById(id);
-        b.className = "bg-gray-800/80 hover:bg-gray-700 border border-gray-600/50 text-gray-400 hover:text-white py-4 rounded-xl font-semibold transition flex flex-col items-center group backdrop-blur-sm";
-    });
 }
 
 function playAudio(type) {

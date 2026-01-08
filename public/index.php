@@ -97,12 +97,12 @@
         </div>
 
         <div id="controlesManuales" class="hidden transition-all duration-300 ease-in-out opacity-0 transform -translate-y-4">
-            <div class="grid grid-cols-2 gap-4 mb-4 p-4 bg-gray-800/40 rounded-2xl border border-gray-700/50 backdrop-blur-md shadow-xl">
-                <button id="btnEntrada" class="bg-gray-800/80 hover:bg-green-900/80 border border-gray-600/50 text-gray-400 hover:text-white py-4 rounded-xl font-semibold transition flex flex-col items-center group">
+            <div class="flex justify-center gap-4 mb-4 p-4 bg-gray-800/40 rounded-2xl border border-gray-700/50 backdrop-blur-md shadow-xl">
+                <button id="btnEntrada" class="w-full max-w-[150px] bg-gray-800/80 hover:bg-green-900/80 border border-gray-600/50 text-gray-400 hover:text-white py-4 rounded-xl font-semibold transition flex flex-col items-center group">
                     <span class="text-2xl group-hover:scale-110 mb-1">⬇️</span>
                     <span class="text-[10px] uppercase font-bold tracking-widest">Forzar Entrada</span>
                 </button>
-                <button id="btnSalida" class="bg-gray-800/80 hover:bg-red-900/80 border border-gray-600/50 text-gray-400 hover:text-white py-4 rounded-xl font-semibold transition flex flex-col items-center group">
+                <button id="btnSalida" class="w-full max-w-[150px] bg-gray-800/80 hover:bg-red-900/80 border border-gray-600/50 text-gray-400 hover:text-white py-4 rounded-xl font-semibold transition flex flex-col items-center group">
                     <span class="text-2xl group-hover:scale-110 mb-1">⬆️</span>
                     <span class="text-[10px] uppercase font-bold tracking-widest">Forzar Salida</span>
                 </button>
