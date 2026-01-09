@@ -7,13 +7,19 @@ let currentSede = localStorage.getItem('asistencia_sede');
 let manualMode = null; 
 let SEDES = []; 
 
-// Variables para el temporizador visual
+// Variables Timer Visual
 let maestrosTimeout = null; 
 let countdownInterval = null; 
 let secondsLeft = 15; 
 
+// Variables de Estabilidad (Watchdog)
+let lastScanTime = Date.now(); // Última vez que el sistema estuvo vivo
+let watchdogInterval = null;
+let isProcessing = false; // Semáforo para no interrumpir envíos
+
 // --- INICIO ---
 document.addEventListener('DOMContentLoaded', async () => {
+    // Listeners
     document.getElementById('btnEntrada').addEventListener('click', () => toggleModoManual('ENTRADA'));
     document.getElementById('btnSalida').addEventListener('click', () => toggleModoManual('SALIDA'));
     document.getElementById('btnResetConfig').addEventListener('click', borrarConfig);
@@ -22,8 +28,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnReload = document.getElementById('btnReloadCam');
     if (btnReload) btnReload.addEventListener('click', recargarCamara);
 
-    // EVENTO: Tocar pantalla reinicia el tiempo (si está en manual)
+    // Click en pantalla reinicia timer manual
     document.addEventListener('click', () => {
+        lastScanTime = Date.now(); // Actividad detectada
         if (manualMode && secondsLeft < 15) {
             secondsLeft = 15; 
             actualizarTextoConTimer(); 
@@ -45,15 +52,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // Iniciar Reloj Normal
+    // Iniciar Reloj Visual
     actualizarTextoVisual();
     setInterval(actualizarTextoVisual, 60000); 
+
+    // INICIAR EL PERRO GUARDIÁN (WATCHDOG)
+    iniciarWatchdog();
 });
 
-// --- LÓGICA VISUAL (Reloj y Textos) ---
+// --- SISTEMA DE AUTO-REPARACIÓN (WATCHDOG) ---
+function iniciarWatchdog() {
+    // Revisa cada 30 segundos si la cámara sigue viva
+    if (watchdogInterval) clearInterval(watchdogInterval);
+    
+    watchdogInterval = setInterval(() => {
+        // Si estamos procesando una asistencia, no molestar
+        if (isProcessing) return;
 
+        // Si el lector existe pero el video está pausado o congelado, reiniciar
+        const reader = document.getElementById('reader');
+        // Simple verificación: Si han pasado 5 minutos sin actividad, refrescar preventivamente
+        // O si detectamos un error de estado en html5QrCode
+        if (html5QrCode && !html5QrCode.isScanning && !manualMode) {
+             console.log("Watchdog: Cámara parece detenida. Reiniciando...");
+             recargarCamara(false); // Reinicio silencioso
+        }
+    }, 30000); 
+}
+
+// --- LÓGICA VISUAL ---
 function actualizarTextoVisual() {
-    // Si hay modo manual activo, no tocamos nada (manda el timer)
     if (manualMode) return; 
 
     const now = new Date();
@@ -63,28 +91,24 @@ function actualizarTextoVisual() {
     const titulo = document.getElementById('estadoVisualTexto');
     const sub = document.getElementById('estadoVisualSub');
 
-    // RESET COMPLETO DE ESTILOS (Para limpiar lo que deja el modo manual)
+    // Reset estilos
     container.className = "mb-4 text-center p-3 rounded-xl border-2 transition-all duration-500 bg-gray-800/50 border-gray-600";
     titulo.className = "text-2xl md:text-3xl font-black uppercase tracking-widest text-white drop-shadow-md";
-    // Restaurar estilo pequeño por defecto para el subtítulo
     sub.className = "text-[10px] font-bold uppercase tracking-wide text-gray-400";
 
     if (hora >= 7 && hora < 12) {
-        // ENTRADA
         container.classList.remove('bg-gray-800/50', 'border-gray-600');
         container.classList.add('bg-green-900/40', 'border-green-500');
         titulo.classList.add('text-green-400');
         titulo.textContent = "MARCANDO ENTRADA";
         sub.textContent = "TURNO MATUTINO";
     } else if (hora >= 12) {
-        // SALIDA
         container.classList.remove('bg-gray-800/50', 'border-gray-600');
         container.classList.add('bg-red-900/40', 'border-red-500');
         titulo.classList.add('text-red-400');
         titulo.textContent = "MARCANDO SALIDA";
         sub.textContent = "TURNO VESPERTINO / SALIDA";
     } else {
-        // MADRUGADA
         titulo.textContent = "ESCANEAR QR";
         sub.textContent = "ESPERANDO LECTURA";
     }
@@ -92,14 +116,9 @@ function actualizarTextoVisual() {
 
 function actualizarTextoConTimer() {
     if (!manualMode) return;
-
     const titulo = document.getElementById('estadoVisualTexto');
     const sub = document.getElementById('estadoVisualSub');
-
-    // AQUÍ ESTÁ EL CAMBIO: Ponemos el contador en el TÍTULO GIGANTE
     titulo.textContent = `FORZANDO ${manualMode} (${secondsLeft}s)`;
-    
-    // El subtítulo solo da la instrucción (un poco más visible que antes)
     sub.textContent = "TOCA LA PANTALLA PARA EXTENDER TIEMPO";
     sub.className = "text-xs font-bold uppercase tracking-wide text-white animate-pulse";
 }
@@ -114,14 +133,12 @@ function toggleVisibilidadMaestros() {
     if (maestrosTimeout) { clearTimeout(maestrosTimeout); maestrosTimeout = null; }
 
     if (contenedor.classList.contains('hidden')) {
-        // ABRIR MENÚ
         const now = new Date();
         const hora = now.getHours();
         
         btnEntrada.classList.remove('hidden');
         btnSalida.classList.remove('hidden');
 
-        // INTELIGENCIA
         if (hora >= 7 && hora < 12) {
             btnEntrada.classList.add('hidden'); 
         } else if (hora >= 12) {
@@ -133,9 +150,7 @@ function toggleVisibilidadMaestros() {
         btnTexto.textContent = "Cancelar";
         btnTexto.classList.add('text-red-400');
 
-        // Autocierre del menú (10s)
         maestrosTimeout = setTimeout(() => { ocultarMaestros(); }, 10000);
-
     } else {
         ocultarMaestros();
     }
@@ -144,27 +159,19 @@ function toggleVisibilidadMaestros() {
 function ocultarMaestros() {
     const contenedor = document.getElementById('controlesManuales');
     const btnTexto = document.getElementById('btnToggleMaestros');
-    
     if (!contenedor) return;
 
     contenedor.classList.add('opacity-0', '-translate-y-4');
     setTimeout(() => contenedor.classList.add('hidden'), 300);
-    
     btnTexto.textContent = "Botones Maestros";
     btnTexto.classList.remove('text-red-400');
-    
     if (maestrosTimeout) { clearTimeout(maestrosTimeout); maestrosTimeout = null; }
 }
 
 function toggleModoManual(tipo) {
-    if (manualMode === tipo) { 
-        resetManualMode(); 
-        return; 
-    }
+    if (manualMode === tipo) { resetManualMode(); return; }
     
     manualMode = tipo;
-    
-    // UI Indicador Inferior
     const txt = document.getElementById('modoManualTexto');
     const ind = document.getElementById('manualIndicator');
     txt.textContent = tipo;
@@ -172,7 +179,6 @@ function toggleModoManual(tipo) {
 
     ocultarMaestros();
 
-    // Actualizar Estilos del Encabezado Gigante
     const color = tipo === 'ENTRADA' ? 'green' : 'red';
     const container = document.getElementById('estadoVisualContainer');
     const titulo = document.getElementById('estadoVisualTexto');
@@ -180,23 +186,20 @@ function toggleModoManual(tipo) {
     container.className = `mb-4 text-center p-3 rounded-xl border-2 transition-all duration-500 bg-${color}-900/40 border-${color}-500`;
     titulo.className = `text-2xl md:text-3xl font-black uppercase tracking-widest text-${color}-400 drop-shadow-lg animate-pulse`;
     
-    // INICIAR CUENTA REGRESIVA
     startCountdown();
 }
 
 function startCountdown() {
     if (countdownInterval) clearInterval(countdownInterval);
-    
     secondsLeft = 15; 
-    actualizarTextoConTimer(); // Mostrar 15s inmediatamente en el título
+    actualizarTextoConTimer(); 
 
     countdownInterval = setInterval(() => {
         secondsLeft--;
         actualizarTextoConTimer();
-
         if (secondsLeft <= 0) {
             clearInterval(countdownInterval);
-            resetManualMode(); // Se acabó el tiempo
+            resetManualMode(); 
         }
     }, 1000);
 }
@@ -204,13 +207,11 @@ function startCountdown() {
 function resetManualMode() {
     manualMode = null;
     document.getElementById('manualIndicator').classList.add('hidden');
-    
     if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
-    
-    actualizarTextoVisual(); // Volver al texto automático normal
+    actualizarTextoVisual(); 
 }
 
-// --- CONFIGURACIÓN & BACKEND --- (Sin cambios)
+// --- CONFIGURACIÓN & BACKEND --- 
 async function cargarSedesBackend() {
     try {
         const res = await fetch('../controllers/SedeController.php'); 
@@ -253,7 +254,11 @@ function iniciarKiosco() {
 }
 
 function iniciarEscanner() {
-    if (html5QrCode) { try { html5QrCode.clear(); } catch(e){} html5QrCode = null; }
+    // Limpieza profunda antes de iniciar
+    if (html5QrCode) { 
+        try { html5QrCode.stop().then(() => html5QrCode.clear()); } catch(e){} 
+        html5QrCode = null;
+    }
     document.getElementById('reader').innerHTML = ''; 
 
     html5QrCode = new Html5Qrcode("reader");
@@ -261,34 +266,51 @@ function iniciarEscanner() {
     
     html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
     .catch(err => {
-        mostrarMensaje('📷', 'ERROR CÁMARA', 'Presione Recargar', '', 'text-red-500');
+        // Si falla el inicio, intentar de nuevo en 3 segundos automáticamente
+        console.error("Fallo camara, reintentando...", err);
+        setTimeout(() => recargarCamara(false), 3000);
     });
 }
 
-function recargarCamara() {
-    mostrarMensaje("🔄", "REINICIANDO...", "Espere...", "", "text-blue-500");
+function recargarCamara(mostrarMensajeUser = true) {
+    if(mostrarMensajeUser) mostrarMensaje("🔄", "REINICIANDO...", "Espere...", "", "text-blue-500");
+    // Forzar recarga completa de página para limpiar memoria del navegador
     setTimeout(() => { window.location.reload(); }, 500);
 }
 
+// --- PROCESAMIENTO BLINDADO ---
 function onScanSuccess(decodedText) {
-    if (!isScanning) return; 
-    isScanning = false; 
+    if (!isScanning || isProcessing) return; 
     
-    // Detener contador al escanear
+    isScanning = false; 
+    isProcessing = true; // Bloquear nuevos escaneos
+    
+    // 1. PAUSAR CÁMARA (Para liberar CPU/Memoria durante el envío)
+    if(html5QrCode) {
+        html5QrCode.pause(); 
+    }
+
     if (countdownInterval) { clearInterval(countdownInterval); }
 
     enviarAsistencia(decodedText);
 }
 
 async function enviarAsistencia(cedulaQr) {
-    mostrarMensaje("⏳", "PROCESANDO...", "Validando...", "", "text-white");
+    mostrarMensaje("⏳", "PROCESANDO...", "Conectando...", "", "text-white");
+
+    // Timeout Controller: Si tarda más de 8 segundos, abortar.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); 
 
     try {
         const res = await fetch('../controllers/RegistrarAsistencia.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cedula: cedulaQr, sede: currentSede, tipo_manual: manualMode })
+            body: JSON.stringify({ cedula: cedulaQr, sede: currentSede, tipo_manual: manualMode }),
+            signal: controller.signal // Vincular timeout
         });
+        clearTimeout(timeoutId); // Limpiar timeout si respondió a tiempo
+
         const data = await res.json();
 
         if (data.status === 'success') {
@@ -296,30 +318,42 @@ async function enviarAsistencia(cedulaQr) {
             const color = data.tipo === 'ENTRADA' ? 'text-green-500' : 'text-blue-500';
             const icono = data.tipo === 'ENTRADA' ? '👋' : '🏠';
             mostrarMensaje(icono, data.tipo, data.colaborador, data.hora, color);
-            
-            // Éxito: Reset (One-Shot)
             if (manualMode) resetManualMode();
 
         } else if (data.status === 'warning') {
             playAudio('error');
             mostrarMensaje('⚠️', 'ESPERA', data.message, '', 'text-yellow-400');
-            // Warning: Reiniciar contador
             if (manualMode) startCountdown();
         } else {
             playAudio('error');
             mostrarMensaje('❌', 'ERROR', data.message, '', 'text-red-500');
-            // Error: Reiniciar contador
             if (manualMode) startCountdown();
         }
+
     } catch (e) {
         playAudio('error');
-        mostrarMensaje('🔌', 'OFFLINE', 'Sin conexión', '', 'text-red-500');
+        // Mensaje específico para timeout o falta de red
+        if (e.name === 'AbortError') {
+            mostrarMensaje('🐢', 'LENTITUD', 'Red inestable', '', 'text-orange-500');
+        } else {
+            mostrarMensaje('🔌', 'OFFLINE', 'Revise conexión', '', 'text-red-500');
+        }
     }
 
+    // FINALIZAR PROCESO Y REANUDAR
     setTimeout(() => {
         ocultarMensaje();
         isScanning = true;
-    }, 3000);
+        isProcessing = false;
+        
+        // 2. REANUDAR CÁMARA (Solo ahora volvemos a consumir recursos)
+        if(html5QrCode) {
+            try { html5QrCode.resume(); } catch(err) { 
+                console.log("Error reanudando, reiniciando...", err);
+                recargarCamara(false); // Si falla al reanudar, recarga forzosa
+            }
+        }
+    }, 2500); // Dar tiempo a leer el mensaje
 }
 
 function mostrarMensaje(icon, title, name, time, colorClass) {
