@@ -34,6 +34,7 @@ try {
     // 4. Variables de Tiempo
     $ahora = new DateTime();
     $hoyYMD = $ahora->format('Y-m-d');
+    $horaActual = intval($ahora->format('H')); // Hora en formato 0-23
     
     // Obtener fecha de última acción (si existe)
     $ultimaAccion = $col['ultima_accion'] ? new DateTime($col['ultima_accion']) : null;
@@ -41,48 +42,59 @@ try {
     
     $estadoActual = $col['estado_actual']; // 'DENTRO' o 'FUERA'
 
-    // 5. LÓGICA "CEREBRO INTELIGENTE" MEJORADA
+    // 5. LÓGICA DE REGISTRO
     $nuevoTipo = '';
 
-    // CASO A: Modo Manual (Botones Maestros) - Tienen prioridad absoluta
+    // CASO A: Modo Manual (Botones Maestros) - PRIORIDAD ABSOLUTA
     if ($tipoManual) {
-        // Solo validamos anti-spam básico de 5 segundos
+        // Validación básica de spam (5 seg) para manual
         if ($ultimaAccion && ($ahora->getTimestamp() - $ultimaAccion->getTimestamp()) < 5) {
-            echo json_encode(['status' => 'warning', 'message' => 'Espera unos segundos...']);
+            echo json_encode(['status' => 'warning', 'message' => 'Procesando... espera un momento.']);
             exit;
         }
         $nuevoTipo = $tipoManual;
     } 
     else {
         // CASO B: Modo Automático (QR)
-        
-        // REGLA 1: ¿Es un NUEVO DÍA?
-        // Si la última marca no fue hoy, NO IMPORTA el estado anterior, hoy empieza de cero.
-        if ($ultimaFechaYMD !== $hoyYMD) {
-            $nuevoTipo = 'ENTRADA';
-        } 
-        else {
-            // Es el MISMO DÍA. Aplicamos lógica de alternancia y protección.
 
-            // REGLA 2: PROTECCIÓN DE TIEMPO (Anti-Rebote 60 segundos)
-            // Evita que marque salida si acaba de marcar entrada hace 59s o menos.
+        // 1. PROTECCIÓN GENERAL ANTI-DOBLE SCAN (60 segundos)
+        // Se aplica siempre en automático para evitar registros accidentales seguidos
+        if ($ultimaAccion) {
             $segundosPasados = $ahora->getTimestamp() - $ultimaAccion->getTimestamp();
             if ($segundosPasados < 60) { 
                 echo json_encode([
                     'status' => 'warning', 
-                    'message' => 'Ya registraste tu ' . ($estadoActual == 'DENTRO' ? 'entrada' : 'salida') . ' hace un momento.'
+                    'message' => 'Ya registraste tu asistencia hace un momento.'
                 ]);
                 exit;
             }
+        }
 
-            // REGLA 3: Alternancia Simple (Dentro -> Salida, Fuera -> Entrada)
-            // La validación visual del kiosco (texto imponente) ayuda al usuario, 
-            // pero el sistema confía en el estado actual para cerrar ciclos.
-            if ($estadoActual === 'DENTRO') {
-                $nuevoTipo = 'SALIDA';
-            } else {
-                // Si está FUERA y vuelve a marcar hoy, es un reingreso (ENTRADA)
+        // 2. DEFINICIÓN DEL TIPO SEGÚN HORARIO (CEREBRO INTELIGENTE)
+        
+        if ($horaActual >= 12) {
+            // --- TARDE (12:00 PM en adelante) ---
+            // REGLA: La pantalla dice "MARCANDO SALIDA", así que el sistema OBEDECE.
+            // No importa si se olvidó marcar entrada en la mañana, aquí cerramos el ciclo.
+            // Si el usuario quiere entrar, debe usar "Forzar Entrada".
+            $nuevoTipo = 'SALIDA';
+
+        } else {
+            // --- MAÑANA (00:00 AM - 11:59 AM) ---
+            // REGLA: Prioridad ENTRADA, pero inteligente.
+
+            if ($ultimaFechaYMD !== $hoyYMD) {
+                // Es el primer registro de un NUEVO DÍA en la mañana -> Obligatorio ENTRADA.
+                // (Esto corrige si ayer se quedó marcado como DENTRO)
                 $nuevoTipo = 'ENTRADA';
+            } else {
+                // Ya registró algo hoy en la mañana. Aplicamos alternancia.
+                // Si marcó entrada a las 8am y sale a las 10am -> Marca SALIDA.
+                if ($estadoActual === 'DENTRO') {
+                    $nuevoTipo = 'SALIDA';
+                } else {
+                    $nuevoTipo = 'ENTRADA';
+                }
             }
         }
     }
